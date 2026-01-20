@@ -1,0 +1,5 @@
+{
+  "name": "TomatoFocus",
+  "description": "A Pomodoro-style timer and focus assistant that helps you manage distractions and stay productive using AI-driven motivation.",
+  "requestFramePermissions": []
+}
