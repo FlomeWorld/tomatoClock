@@ -1,4 +1,4 @@
-import { BlockedSite } from '../types';
+import { BlockedSite, SavedTimerState, TimerMode } from '../types';
 
 declare var chrome: any;
 
@@ -7,7 +7,8 @@ const isExtension = () => {
   return typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
 };
 
-// Save sites to Chrome Local Storage
+// --- Blocked Sites Storage ---
+
 export const saveBlockedSites = async (sites: BlockedSite[]) => {
   if (!isExtension()) {
     localStorage.setItem('blockedSites', JSON.stringify(sites));
@@ -16,7 +17,6 @@ export const saveBlockedSites = async (sites: BlockedSite[]) => {
   await chrome.storage.local.set({ blockedSites: sites });
 };
 
-// Load sites from Chrome Local Storage
 export const loadBlockedSites = async (): Promise<BlockedSite[]> => {
   if (!isExtension()) {
     const saved = localStorage.getItem('blockedSites');
@@ -26,10 +26,30 @@ export const loadBlockedSites = async (): Promise<BlockedSite[]> => {
   return result.blockedSites || [];
 };
 
-// Update the actual network blocking rules
+// --- Timer State Storage ---
+
+export const saveTimerState = async (state: SavedTimerState) => {
+  if (!isExtension()) {
+    localStorage.setItem('timerState', JSON.stringify(state));
+    return;
+  }
+  await chrome.storage.local.set({ timerState: state });
+};
+
+export const loadTimerState = async (): Promise<SavedTimerState | null> => {
+  if (!isExtension()) {
+    const saved = localStorage.getItem('timerState');
+    return saved ? JSON.parse(saved) : null;
+  }
+  const result = await chrome.storage.local.get('timerState');
+  return result.timerState || null;
+};
+
+// --- Blocking Rules ---
+
 export const updateBlockingRules = async (sites: BlockedSite[], isBlockingEnabled: boolean) => {
   if (!isExtension()) {
-    console.log(`[Dev Mode] Blocking enabled: ${isBlockingEnabled}. Sites:`, sites);
+    // console.log(`[Dev Mode] Blocking enabled: ${isBlockingEnabled}. Sites:`, sites);
     return;
   }
 

@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, RotateCcw, Settings, Coffee, Brain, MonitorOff, Sparkles, Shield, Timer as TimerIcon, List } from 'lucide-react';
+import { Play, Pause, RotateCcw, Settings, Coffee, Brain, MonitorOff, Sparkles, Shield, Timer as TimerIcon } from 'lucide-react';
 import CircularTimer from './components/CircularTimer';
 import BlockList from './components/BlockList';
 import SettingsModal from './components/SettingsModal';
 import { TimerMode, TimerSettings, BlockedSite, FocusTip } from './types';
 import { getFocusMotivation } from './services/geminiService';
-import { loadBlockedSites, saveBlockedSites, updateBlockingRules } from './services/extensionService';
+import { loadBlockedSites, saveBlockedSites, updateBlockingRules, saveTimerState, loadTimerState } from './services/extensionService';
 
 const DEFAULT_SETTINGS: TimerSettings = {
   workDuration: 25,
@@ -28,21 +28,7 @@ function App() {
 
   // Refs
   const timerRef = useRef<number | null>(null);
-
-  // Load initial data
-  useEffect(() => {
-    const init = async () => {
-      const savedSites = await loadBlockedSites();
-      setBlockedSites(savedSites);
-    };
-    init();
-  }, []);
-
-  // Sync blocking rules whenever relevant state changes
-  useEffect(() => {
-    const shouldBlock = isRunning && mode === TimerMode.WORK;
-    updateBlockingRules(blockedSites, shouldBlock);
-  }, [isRunning, mode, blockedSites]);
+  const targetTimeRef = useRef<number | null>(null);
 
   // Helper to get duration for a mode
   const getDurationForMode = (m: TimerMode, settings: TimerSettings) => {
@@ -54,24 +40,186 @@ function App() {
     }
   };
 
-  // Handlers
-  const switchMode = (newMode: TimerMode) => {
+  // --- Initialization ---
+  useEffect(() => {
+    const init = async () => {
+      // 1. Load Blocked Sites
+      const savedSites = await loadBlockedSites();
+      setBlockedSites(savedSites);
+
+      // 2. Load Timer State
+      const savedState = await loadTimerState();
+      
+      if (savedState) {
+        setMode(savedState.mode);
+        
+        if (savedState.isRunning && savedState.targetEndTime) {
+          // Timer was running. Calculate remaining time based on target.
+          const now = Date.now();
+          const remainingSeconds = Math.ceil((savedState.targetEndTime - now) / 1000);
+          
+          if (remainingSeconds > 0) {
+            setTimeLeft(remainingSeconds);
+            setIsRunning(true);
+            targetTimeRef.current = savedState.targetEndTime;
+          } else {
+            // Timer expired while closed
+            setTimeLeft(0);
+            setIsRunning(false);
+            targetTimeRef.current = null;
+            // Optionally: Trigger completion logic here (e.g., clear blocking)
+            await saveTimerState({
+               mode: savedState.mode,
+               timeLeft: 0,
+               isRunning: false,
+               targetEndTime: null,
+               lastUpdated: Date.now()
+            });
+          }
+        } else {
+          // Timer was paused or stopped
+          setTimeLeft(savedState.timeLeft);
+          setIsRunning(false);
+          targetTimeRef.current = null;
+        }
+      }
+    };
+    init();
+  }, []);
+
+  // --- Logic Sync ---
+
+  // Sync blocking rules whenever relevant state changes
+  useEffect(() => {
+    const shouldBlock = isRunning && mode === TimerMode.WORK;
+    updateBlockingRules(blockedSites, shouldBlock);
+  }, [isRunning, mode, blockedSites]);
+
+
+  // --- Timer Interval ---
+  useEffect(() => {
+    if (isRunning) {
+      // Clear any existing interval to be safe
+      if (timerRef.current) window.clearInterval(timerRef.current);
+
+      timerRef.current = window.setInterval(() => {
+        if (targetTimeRef.current) {
+          // Accurate countdown based on system time
+          const now = Date.now();
+          const diff = Math.ceil((targetTimeRef.current - now) / 1000);
+          
+          if (diff <= 0) {
+            // Timer Finished
+            setTimeLeft(0);
+            setIsRunning(false);
+            targetTimeRef.current = null;
+            if (timerRef.current) clearInterval(timerRef.current);
+            
+            // Persist finished state
+            saveTimerState({
+              mode,
+              timeLeft: 0,
+              isRunning: false,
+              targetEndTime: null,
+              lastUpdated: Date.now()
+            });
+          } else {
+            setTimeLeft(diff);
+          }
+        } else {
+          // Fallback if targetTime is missing (shouldn't happen if logic is correct)
+          setTimeLeft((prev) => {
+             if (prev <= 1) {
+               setIsRunning(false);
+               return 0;
+             }
+             return prev - 1;
+          });
+        }
+      }, 1000);
+    } else {
+      if (timerRef.current) window.clearInterval(timerRef.current);
+    }
+
+    return () => {
+      if (timerRef.current) window.clearInterval(timerRef.current);
+    };
+  }, [isRunning, mode]);
+
+
+  // --- Actions ---
+
+  const switchMode = async (newMode: TimerMode) => {
     setIsRunning(false);
     setMode(newMode);
-    setTimeLeft(getDurationForMode(newMode, timerSettings) * 60);
+    const newTime = getDurationForMode(newMode, timerSettings) * 60;
+    setTimeLeft(newTime);
+    targetTimeRef.current = null;
+
+    // Save state
+    await saveTimerState({
+      mode: newMode,
+      timeLeft: newTime,
+      isRunning: false,
+      targetEndTime: null,
+      lastUpdated: Date.now()
+    });
   };
 
-  const toggleTimer = () => setIsRunning(!isRunning);
+  const toggleTimer = async () => {
+    if (!isRunning) {
+      // STARTING
+      if (timeLeft <= 0) return; // Don't start if 0
 
-  const resetTimer = () => {
+      const target = Date.now() + timeLeft * 1000;
+      targetTimeRef.current = target;
+      setIsRunning(true);
+
+      // Save state with Target Time
+      await saveTimerState({
+        mode,
+        timeLeft,
+        isRunning: true,
+        targetEndTime: target,
+        lastUpdated: Date.now()
+      });
+    } else {
+      // PAUSING
+      setIsRunning(false);
+      targetTimeRef.current = null;
+
+      // Save state with current TimeLeft (no target)
+      await saveTimerState({
+        mode,
+        timeLeft,
+        isRunning: false,
+        targetEndTime: null,
+        lastUpdated: Date.now()
+      });
+    }
+  };
+
+  const resetTimer = async () => {
     setIsRunning(false);
-    setTimeLeft(getDurationForMode(mode, timerSettings) * 60);
+    const newTime = getDurationForMode(mode, timerSettings) * 60;
+    setTimeLeft(newTime);
+    targetTimeRef.current = null;
+
+    await saveTimerState({
+      mode,
+      timeLeft: newTime,
+      isRunning: false,
+      targetEndTime: null,
+      lastUpdated: Date.now()
+    });
   };
 
   const updateSettings = (newSettings: TimerSettings) => {
     setTimerSettings(newSettings);
     if (!isRunning) {
        setTimeLeft(getDurationForMode(mode, newSettings) * 60);
+       // We don't saveTimerState here immediately, but we could. 
+       // The user usually resets after changing settings anyway.
     }
   };
 
@@ -100,28 +248,6 @@ function App() {
     setAiTip(tip);
     setIsLoadingTip(false);
   };
-
-  // Timer Effect
-  useEffect(() => {
-    if (isRunning && timeLeft > 0) {
-      timerRef.current = window.setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            setIsRunning(false);
-            if (timerRef.current) clearInterval(timerRef.current);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isRunning, timeLeft]);
 
   return (
     <div className="w-full h-full flex flex-col bg-slate-50">

@@ -20,3 +20,11 @@ export interface FocusTip {
   text: string;
   type: 'motivation' | 'strategy' | 'scolding';
 }
+
+export interface SavedTimerState {
+  mode: TimerMode;
+  timeLeft: number;
+  isRunning: boolean;
+  targetEndTime: number | null;
+  lastUpdated: number;
+}
