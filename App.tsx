@@ -134,7 +134,7 @@ function App() {
       />
 
       {/* Header */}
-      <header className="h-14 bg-white border-b border-slate-100 flex items-center justify-between px-4 shrink-0">
+      <header className="h-14 bg-white border-b border-slate-100 flex items-center justify-between px-4 shrink-0 relative z-20">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center text-white shadow-sm">
             <MonitorOff className="w-5 h-5" />
@@ -148,6 +148,34 @@ function App() {
           <Settings className="w-5 h-5" />
         </button>
       </header>
+
+      {/* Top Navigation Tabs */}
+      <div className="h-12 bg-white border-b border-slate-100 flex shrink-0 z-10">
+        <button
+          onClick={() => setActiveTab('timer')}
+          className={`flex-1 flex items-center justify-center gap-2 text-sm font-medium transition-all relative ${
+            activeTab === 'timer' ? 'text-red-600' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <TimerIcon className="w-4 h-4" />
+          Timer
+          {activeTab === 'timer' && (
+            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-red-500" />
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('blocked')}
+          className={`flex-1 flex items-center justify-center gap-2 text-sm font-medium transition-all relative ${
+            activeTab === 'blocked' ? 'text-red-600' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Shield className="w-4 h-4" />
+          Block List
+          {activeTab === 'blocked' && (
+            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-red-500" />
+          )}
+        </button>
+      </div>
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-hidden relative">
@@ -239,28 +267,6 @@ function App() {
           />
         </div>
 
-      </div>
-
-      {/* Bottom Navigation */}
-      <div className="h-14 bg-white border-t border-slate-200 flex shrink-0 z-10">
-        <button
-          onClick={() => setActiveTab('timer')}
-          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
-            activeTab === 'timer' ? 'text-red-500 bg-red-50/50' : 'text-slate-400 hover:text-slate-600'
-          }`}
-        >
-          <TimerIcon className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Timer</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('blocked')}
-          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
-            activeTab === 'blocked' ? 'text-red-500 bg-red-50/50' : 'text-slate-400 hover:text-slate-600'
-          }`}
-        >
-          <Shield className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Block List</span>
-        </button>
       </div>
     </div>
   );

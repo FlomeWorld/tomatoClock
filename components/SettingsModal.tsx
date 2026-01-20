@@ -31,8 +31,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+      {/* Width constrained to 360px to fit comfortably in 400px popup */}
+      <div className="bg-white rounded-2xl shadow-2xl w-[360px] overflow-hidden animate-in fade-in zoom-in duration-200">
         <div className="bg-slate-50 border-b border-slate-100 p-4 flex items-center justify-between">
           <h2 className="font-bold text-slate-800 flex items-center gap-2">
             <Clock className="w-5 h-5 text-slate-500" />
@@ -43,7 +44,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-5 space-y-5">
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-semibold text-slate-700">Focus Duration (minutes)</label>
@@ -90,7 +91,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
             className="px-4 py-2 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-sm flex items-center gap-2 transition-colors"
           >
             <Save className="w-4 h-4" />
-            Save Changes
+            Save
           </button>
         </div>
       </div>
