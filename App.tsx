@@ -379,11 +379,14 @@ function App() {
             ].map((m) => (
               <button
                 key={m.id}
-                onClick={() => switchMode(m.id)}
+                onClick={() => !isRunning && switchMode(m.id)}
+                disabled={isRunning}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-md transition-all ${
                   mode === m.id 
                     ? 'bg-white text-slate-900 shadow-sm' 
-                    : 'text-slate-500 hover:text-slate-700'
+                    : isRunning
+                      ? 'text-slate-300 cursor-not-allowed'
+                      : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
                 <m.icon className="w-3.5 h-3.5" />
