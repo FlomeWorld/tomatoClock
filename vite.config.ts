@@ -4,6 +4,7 @@ import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  base: './', // Critical: Ensures assets are loaded relative to index.html
   build: {
     outDir: 'dist',
     rollupOptions: {
