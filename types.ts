@@ -8,6 +8,7 @@ export interface TimerSettings {
   workDuration: number; // in minutes
   shortBreakDuration: number;
   longBreakDuration: number;
+  longBreakInterval: number; // Number of work sessions before a long break
 }
 
 export interface BlockedSite {
@@ -27,4 +28,5 @@ export interface SavedTimerState {
   isRunning: boolean;
   targetEndTime: number | null;
   lastUpdated: number;
+  completedCycles: number; // Track how many work sessions done
 }

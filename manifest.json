@@ -5,7 +5,8 @@
   "description": "A Pomodoro-style timer that blocks distractions and provides AI motivation.",
   "permissions": [
     "storage",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "notifications"
   ],
   "host_permissions": [
     "<all_urls>"

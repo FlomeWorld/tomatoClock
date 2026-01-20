@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS: TimerSettings = {
   workDuration: 25,
   shortBreakDuration: 5,
   longBreakDuration: 15,
+  longBreakInterval: 4,
 };
 
 function App() {
@@ -22,6 +23,8 @@ function App() {
   const [mode, setMode] = useState<TimerMode>(TimerMode.WORK);
   const [timeLeft, setTimeLeft] = useState(DEFAULT_SETTINGS.workDuration * 60);
   const [isRunning, setIsRunning] = useState(false);
+  const [completedCycles, setCompletedCycles] = useState(0); // Track progress for long break
+
   const [blockedSites, setBlockedSites] = useState<BlockedSite[]>([]);
   const [aiTip, setAiTip] = useState<FocusTip | null>(null);
   const [isLoadingTip, setIsLoadingTip] = useState(false);
@@ -43,6 +46,11 @@ function App() {
   // --- Initialization ---
   useEffect(() => {
     const init = async () => {
+      // 0. Request Notifications
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+
       // 1. Load Blocked Sites
       const savedSites = await loadBlockedSites();
       setBlockedSites(savedSites);
@@ -52,6 +60,7 @@ function App() {
       
       if (savedState) {
         setMode(savedState.mode);
+        setCompletedCycles(savedState.completedCycles || 0);
         
         if (savedState.isRunning && savedState.targetEndTime) {
           // Timer was running. Calculate remaining time based on target.
@@ -63,18 +72,9 @@ function App() {
             setIsRunning(true);
             targetTimeRef.current = savedState.targetEndTime;
           } else {
-            // Timer expired while closed
-            setTimeLeft(0);
-            setIsRunning(false);
-            targetTimeRef.current = null;
-            // Optionally: Trigger completion logic here (e.g., clear blocking)
-            await saveTimerState({
-               mode: savedState.mode,
-               timeLeft: 0,
-               isRunning: false,
-               targetEndTime: null,
-               lastUpdated: Date.now()
-            });
+            // Timer expired while closed. 
+            // Trigger completion logic immediately to catch up.
+            await handleTimerComplete(savedState.mode, savedState.completedCycles || 0);
           }
         } else {
           // Timer was paused or stopped
@@ -96,41 +96,99 @@ function App() {
   }, [isRunning, mode, blockedSites]);
 
 
+  // --- Core Timer Logic ---
+
+  const sendNotification = (title: string, body: string) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+       // Using chrome.notifications if available (Extension API), else fallback
+       // @ts-ignore
+       if (typeof chrome !== 'undefined' && chrome.notifications) {
+          // @ts-ignore
+          chrome.notifications.create({
+            type: 'basic',
+            iconUrl: 'logo192.png', // Ensure you have an icon, or uses default
+            title: title,
+            message: body,
+            priority: 2
+          });
+       } else {
+         new Notification(title, { body, icon: 'logo192.png' });
+       }
+    }
+  };
+
+  // This function handles the "Alarm" and auto-switching
+  const handleTimerComplete = async (currentMode: TimerMode, cycles: number) => {
+    let nextMode: TimerMode = TimerMode.WORK;
+    let nextCycles = cycles;
+
+    // 1. Determine Next Mode
+    if (currentMode === TimerMode.WORK) {
+      nextCycles = cycles + 1;
+      const interval = timerSettings.longBreakInterval || 4;
+      
+      if (nextCycles % interval === 0) {
+        nextMode = TimerMode.LONG_BREAK;
+        sendNotification("Great Focus!", `You've done ${nextCycles} cycles. Enjoy a Long Break.`);
+      } else {
+        nextMode = TimerMode.SHORT_BREAK;
+        sendNotification("Break Time!", "Take a short break to recharge.");
+      }
+    } else {
+      // Break is over, back to work
+      nextMode = TimerMode.WORK;
+      sendNotification("Break Over", "Time to focus again!");
+    }
+
+    // 2. Set State
+    setMode(nextMode);
+    setCompletedCycles(nextCycles);
+    
+    // 3. Auto-Start Next Timer
+    const nextDurationMinutes = getDurationForMode(nextMode, timerSettings);
+    const nextDurationSeconds = nextDurationMinutes * 60;
+    const nextTarget = Date.now() + (nextDurationSeconds * 1000);
+
+    setTimeLeft(nextDurationSeconds);
+    setMode(nextMode);
+    setIsRunning(true);
+    targetTimeRef.current = nextTarget;
+
+    // 4. Save State
+    await saveTimerState({
+      mode: nextMode,
+      timeLeft: nextDurationSeconds,
+      isRunning: true,
+      targetEndTime: nextTarget,
+      lastUpdated: Date.now(),
+      completedCycles: nextCycles
+    });
+  };
+
   // --- Timer Interval ---
   useEffect(() => {
     if (isRunning) {
-      // Clear any existing interval to be safe
       if (timerRef.current) window.clearInterval(timerRef.current);
 
       timerRef.current = window.setInterval(() => {
         if (targetTimeRef.current) {
-          // Accurate countdown based on system time
           const now = Date.now();
           const diff = Math.ceil((targetTimeRef.current - now) / 1000);
           
           if (diff <= 0) {
-            // Timer Finished
-            setTimeLeft(0);
-            setIsRunning(false);
-            targetTimeRef.current = null;
+            // --- TIMER FINISHED ---
+            // Don't just stop. Proceed to next cycle.
             if (timerRef.current) clearInterval(timerRef.current);
-            
-            // Persist finished state
-            saveTimerState({
-              mode,
-              timeLeft: 0,
-              isRunning: false,
-              targetEndTime: null,
-              lastUpdated: Date.now()
-            });
+            handleTimerComplete(mode, completedCycles);
           } else {
             setTimeLeft(diff);
           }
         } else {
-          // Fallback if targetTime is missing (shouldn't happen if logic is correct)
+          // Fallback logic
           setTimeLeft((prev) => {
              if (prev <= 1) {
-               setIsRunning(false);
+               // Fallback completion
+               handleTimerComplete(mode, completedCycles);
                return 0;
              }
              return prev - 1;
@@ -144,7 +202,7 @@ function App() {
     return () => {
       if (timerRef.current) window.clearInterval(timerRef.current);
     };
-  }, [isRunning, mode]);
+  }, [isRunning, mode, completedCycles, timerSettings]); // Added dependencies to ensure fresh closure
 
 
   // --- Actions ---
@@ -162,39 +220,40 @@ function App() {
       timeLeft: newTime,
       isRunning: false,
       targetEndTime: null,
-      lastUpdated: Date.now()
+      lastUpdated: Date.now(),
+      completedCycles
     });
   };
 
   const toggleTimer = async () => {
     if (!isRunning) {
       // STARTING
-      if (timeLeft <= 0) return; // Don't start if 0
+      if (timeLeft <= 0) return;
 
       const target = Date.now() + timeLeft * 1000;
       targetTimeRef.current = target;
       setIsRunning(true);
 
-      // Save state with Target Time
       await saveTimerState({
         mode,
         timeLeft,
         isRunning: true,
         targetEndTime: target,
-        lastUpdated: Date.now()
+        lastUpdated: Date.now(),
+        completedCycles
       });
     } else {
       // PAUSING
       setIsRunning(false);
       targetTimeRef.current = null;
 
-      // Save state with current TimeLeft (no target)
       await saveTimerState({
         mode,
         timeLeft,
         isRunning: false,
         targetEndTime: null,
-        lastUpdated: Date.now()
+        lastUpdated: Date.now(),
+        completedCycles
       });
     }
   };
@@ -204,13 +263,17 @@ function App() {
     const newTime = getDurationForMode(mode, timerSettings) * 60;
     setTimeLeft(newTime);
     targetTimeRef.current = null;
+    
+    // Resetting usually implies resetting the current session, not necessarily all cycles
+    // But if they are manually resetting, let's just reset the current timer.
 
     await saveTimerState({
       mode,
       timeLeft: newTime,
       isRunning: false,
       targetEndTime: null,
-      lastUpdated: Date.now()
+      lastUpdated: Date.now(),
+      completedCycles
     });
   };
 
@@ -218,8 +281,6 @@ function App() {
     setTimerSettings(newSettings);
     if (!isRunning) {
        setTimeLeft(getDurationForMode(mode, newSettings) * 60);
-       // We don't saveTimerState here immediately, but we could. 
-       // The user usually resets after changing settings anyway.
     }
   };
 
@@ -340,6 +401,11 @@ function App() {
                 mode={mode}
                 isRunning={isRunning}
               />
+            </div>
+            
+            {/* Cycle Count Indicator */}
+            <div className="mt-2 text-xs font-semibold text-slate-400 tracking-wider">
+               CYCLE {completedCycles + 1}
             </div>
 
             <div className="flex items-center gap-4 mt-6">
