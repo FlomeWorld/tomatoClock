@@ -2,7 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom Scrollbar for the block list */
+/* Force specific dimensions for Chrome Extension Popup */
+body {
+  width: 400px;
+  height: 600px;
+  margin: 0;
+  overflow: hidden; /* Prevent outer scrollbars */
+}
+
+/* Custom Scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
